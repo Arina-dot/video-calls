@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Прямая Видеосвязь по Ссылке</title>
+    <title>Мой Класс Видеосвязи</title>
     <!-- Подключаем библиотеку PeerJS -->
     <script src="https://unpkg.com"></script>
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 10px;
             font-family: Arial, sans-serif;
             background-color: #141419;
             color: #fff;
@@ -20,21 +20,25 @@
             box-sizing: border-box;
         }
         .status-panel {
-            margin-bottom: 20px;
-            padding: 15px 25px;
+            margin-bottom: 15px;
+            padding: 10px 20px;
             background: #202028;
             border-radius: 8px;
             text-align: center;
-            font-size: 1.1rem;
+            font-size: 1rem;
             box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 1100px;
+            box-sizing: border-box;
         }
         .video-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            gap: 15px;
             width: 100%;
             max-width: 1100px;
             flex: 1;
+            margin-bottom: 70px;
         }
         .video-container {
             position: relative;
@@ -51,7 +55,7 @@
             flex: 1;
         }
         #local-video {
-            transform: scaleX(-1); /* Зеркально для себя */
+            transform: scaleX(-1);
         }
         .video-label {
             position: absolute;
@@ -63,24 +67,42 @@
             font-size: 0.9rem;
             z-index: 10;
         }
-        /* Кнопка "Картинка в картинке" */
-        .pip-btn {
-            position: absolute;
+        .control-panel {
+            position: fixed;
             bottom: 15px;
-            right: 15px;
-            background-color: rgba(0, 123, 255, 0.85);
+            display: flex;
+            gap: 15px;
+            background: rgba(32, 32, 40, 0.95);
+            padding: 12px 25px;
+            border-radius: 30px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+        .btn {
+            background: #3a3a4a;
             color: white;
             border: none;
-            padding: 8px 12px;
+            padding: 10px 16px;
             font-size: 14px;
-            border-radius: 6px;
+            border-radius: 20px;
             cursor: pointer;
-            backdrop-filter: blur(4px);
-            transition: background 0.2s;
-            z-index: 10;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
-        .pip-btn:hover {
-            background-color: #0056b3;
+        .btn:hover {
+            background: #4a4a5a;
+        }
+        .btn.active {
+            background: #e02424;
+        }
+        .btn-end {
+            background: #e02424;
+        }
+        .btn-end:hover {
+            background: #b31919;
         }
         .error-message {
             color: #ff4d4d;
@@ -104,14 +126,18 @@
             <div class="video-container">
                 <div class="video-label">Ученик</div>
                 <video id="remote-video" autoplay playsinline></video>
-                <!-- Кнопка поверх видео ученика -->
-                <button id="pip-button" class="pip-btn" style="display: none;">📺 Поверх всех окон</button>
             </div>
+        </div>
+
+        <div class="control-panel">
+            <button id="toggle-mic" class="btn">🎤 Микрофон: Вкл</button>
+            <button id="toggle-cam" class="btn">📷 Камера: Вкл</button>
+            <button id="pip-button" class="btn" style="display: none;">📺 Картинка в картинке</button>
+            <button id="end-call" class="btn btn-end">📞 Завершить</button>
         </div>
     </div>
 
     <div id="error-screen" class="error-message" style="display: none;"></div>
-
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const roomName = urlParams.get('room');
@@ -122,22 +148,20 @@
         const pipButton = document.getElementById('pip-button');
         const remoteVideo = document.getElementById('remote-video');
         
-        let localStream;
+        let localStream = null;
+        let currentCall = null;
+        let isMicOn = true;
+        let isCamOn = true;
 
-        // НАСТРОЙКА БЕЗ GOOGLE: используем стабильные серверы Mozilla
         const peerConfig = {
-            config: {
-                iceServers: [
-                    { urls: 'stun:://mozilla.com' }
-                ]
-            }
+            config: { iceServers: [{ urls: 'stun:://mozilla.com' }] }
         };
 
         if (!roomName) {
             errorScreen.innerHTML = `
                 <h2>Комната не указана</h2>
                 <p>Пожалуйста, добавьте имя комнаты в конец ссылки.</p>
-                <p>Пример: <b>${window.location.href}?room=ivan</b></p>
+                <p>Пример: в конце адреса допишите <b>?room=ivan</b></p>
             `;
             errorScreen.style.display = 'block';
         } else {
@@ -146,19 +170,15 @@
         }
 
         function startCallSystem() {
-            // Запрашиваем камеру и микрофон с максимальными настройками очистки звука
             navigator.mediaDevices.getUserMedia({ 
                 video: true, 
-                audio: {
-                    echoCancellation: true,      // Жесткое подавление эха
-                    noiseSuppression: true,      // Максимальное подавление шумов
-                    autoGainControl: true        // Автоматическое выравнивание голоса
-                } 
+                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
             })
             .then(stream => {
                 localStream = stream;
                 document.getElementById('local-video').srcObject = stream;
                 initPeerConnection();
+                setupControls();
             })
             .catch(err => {
                 statusText.innerHTML = `<span style="color:#ff4d4d">Ошибка: Нет доступа к камере или микрофону. Проверьте HTTPS!</span>`;
@@ -170,7 +190,6 @@
             const teacherId = `room-${roomName}-teacher`;
             const studentId = `room-${roomName}-student`;
 
-            // Создаем подключение для роли Учителя через сервер Mozilla
             let peer = new Peer(teacherId, peerConfig);
 
             peer.on('open', () => {
@@ -178,6 +197,7 @@
                 
                 peer.on('call', (call) => {
                     statusText.innerHTML = `<span style="color:#00ff88">Ученик подключился! Идет урок.</span>`;
+                    currentCall = call;
                     call.answer(localStream);
                     call.on('stream', (remoteStream) => {
                         remoteVideo.srcObject = remoteStream;
@@ -189,14 +209,13 @@
             peer.on('error', (err) => {
                 if (err.type === 'unavailable-id') {
                     peer.destroy();
-                    
-                    // Создаем подключение для роли Ученика через сервер Mozilla
                     peer = new Peer(studentId, peerConfig);
                     
                     peer.on('open', () => {
                         statusText.innerHTML = `Подключение к учителю...`;
                         
                         const call = peer.call(teacherId, localStream);
+                        currentCall = call;
                         call.on('stream', (remoteStream) => {
                             statusText.innerHTML = `<span style="color:#00ff88">Связь установлена! Идет урок.</span>`;
                             remoteVideo.srcObject = remoteStream;
@@ -207,6 +226,32 @@
                     statusText.innerHTML = `<span style="color:#ff4d4d">Ошибка сети. Попробуйте обновить страницу.</span>`;
                 }
             });
+        }
+
+        function setupControls() {
+            document.getElementById('toggle-mic').onclick = (e) => {
+                isMicOn = !isMicOn;
+                localStream.getAudioTracks().enabled = isMicOn;
+                e.target.innerHTML = isMicOn ? '🎤 Микрофон: Вкл' : '🔇 Микрофон: Выкл';
+                e.target.classList.toggle('active', !isMicOn);
+            };
+
+            document.getElementById('toggle-cam').onclick = (e) => {
+                isCamOn = !isCamOn;
+                localStream.getVideoTracks().enabled = isCamOn;
+                e.target.innerHTML = isCamOn ? '📷 Камера: Вкл' : '❌ Камера: Выкл';
+                e.target.classList.toggle('active', !isCamOn);
+            };
+
+            document.getElementById('end-call').onclick = () => {
+                if (currentCall) currentCall.close();
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                statusText.innerHTML = `<span style="color:#ff4d4d">Звонок завершен. Можно закрыть вкладку.</span>`;
+                remoteVideo.srcObject = null;
+                document.getElementById('local-video').srcObject = null;
+            };
         }
 
         function enablePipButton() {
@@ -229,3 +274,4 @@
     </script>
 </body>
 </html>
+
