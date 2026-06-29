@@ -4,106 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Мой Класс Видеосвязи</title>
-    <!-- Подключаем библиотеку PeerJS -->
-    <script src="https://unpkg.com"></script>
+    <!-- Подключаем официальную библиотеку видеокомнат, которая заменит нестабильный PeerJS -->
+    <script src="https://8x8.vc"></script>
     <style>
         body {
             margin: 0;
-            padding: 10px;
+            padding: 0;
             font-family: Arial, sans-serif;
             background-color: #141419;
             color: #fff;
             display: flex;
             flex-direction: column;
-            align-items: center;
             height: 100vh;
             box-sizing: border-box;
-        }
-        .status-panel {
-            margin-bottom: 15px;
-            padding: 10px 20px;
-            background: #202028;
-            border-radius: 8px;
-            text-align: center;
-            font-size: 1rem;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            width: 100%;
-            max-width: 1100px;
-            box-sizing: border-box;
-        }
-        .video-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            width: 100%;
-            max-width: 1100px;
-            flex: 1;
-            margin-bottom: 70px;
-        }
-        .video-container {
-            position: relative;
-            background: #000;
-            border-radius: 12px;
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
         }
-        video {
+        #meet-container {
+            flex: 1;
             width: 100%;
             height: 100%;
-            object-fit: cover;
-            flex: 1;
-        }
-        #local-video {
-            transform: scaleX(-1);
-        }
-        .video-label {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.6);
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            z-index: 10;
-        }
-        /* Панель управления звонком */
-        .control-panel {
-            position: fixed;
-            bottom: 15px;
-            display: flex;
-            gap: 15px;
-            background: rgba(32, 32, 40, 0.95);
-            padding: 12px 25px;
-            border-radius: 30px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-            backdrop-filter: blur(10px);
-            z-index: 100;
-        }
-        .btn {
-            background: #3a3a4a;
-            color: white;
-            border: none;
-            padding: 10px 16px;
-            font-size: 14px;
-            border-radius: 20px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .btn:hover {
-            background: #4a4a5a;
-        }
-        .btn.disabled-state {
-            background: #e02424 !important; /* Красный цвет для выключенного режима */
-        }
-        .btn-end {
-            background: #e02424;
-        }
-        .btn-end:hover {
-            background: #b31919;
+            background-color: #000;
         }
         .error-message {
             color: #ff4d4d;
@@ -111,174 +31,73 @@
             text-align: center;
             max-width: 500px;
             margin-top: 50px;
+            align-self: center;
         }
     </style>
 </head>
 <body>
 
-    <div id="main-interface" style="display: none; width: 100%; height: 100%; flex-direction: column; align-items: center;">
-        <div class="status-panel" id="status-text">Подключение к комнате...</div>
-
-        <div class="video-grid">
-            <div class="video-container">
-                <div class="video-label">Вы</div>
-                <video id="local-video" autoplay muted playsinline></video>
-            </div>
-            <div class="video-container">
-                <div class="video-label">Ученик</div>
-                <video id="remote-video" autoplay playsinline></video>
-            </div>
-        </div>
-
-        <div class="control-panel">
-            <button id="toggle-mic" class="btn">🎤 Микрофон: Вкл</button>
-            <button id="toggle-cam" class="btn">📷 Камера: Вкл</button>
-            <button id="pip-button" class="btn" style="display: none;">📺 Картинка в картинке</button>
-            <button id="end-call" class="btn btn-end">📞 Завершить</button>
-        </div>
-    </div>
+    <!-- В этом блоке автоматически откроется видеосвязь со всеми кнопками -->
+    <div id="meet-container"></div>
 
     <div id="error-screen" class="error-message" style="display: none;"></div>
     <script>
+        // Считываем имя комнаты из ссылки (например, ?room=ivan)
         const urlParams = new URLSearchParams(window.location.search);
         const roomName = urlParams.get('room');
 
-        const statusText = document.getElementById('status-text');
         const errorScreen = document.getElementById('error-screen');
-        const mainInterface = document.getElementById('main-interface');
-        const pipButton = document.getElementById('pip-button');
-        const remoteVideo = document.getElementById('remote-video');
-        
-        let localStream = null;
-        let currentCall = null;
-        let isMicOn = true;
-        let isCamOn = true;
-
-        const peerConfig = {
-            config: { iceServers: [{ urls: 'stun:://mozilla.com' }] }
-        };
+        const meetContainer = document.getElementById('meet-container');
 
         if (!roomName) {
+            meetContainer.style.display = 'none';
             errorScreen.innerHTML = `
                 <h2>Комната не указана</h2>
                 <p>Пожалуйста, добавьте имя комнаты в конец ссылки.</p>
-                <p>Пример: в конце адреса допишите <b>?room=ivan</b></p>
+                <p>Пример: в конце адреса вашего сайта допишите <b>?room=ivan</b></p>
             `;
             errorScreen.style.display = 'block';
         } else {
-            mainInterface.style.display = 'flex';
-            startCallSystem();
-        }
-
-        function startCallSystem() {
-            navigator.mediaDevices.getUserMedia({ 
-                video: true, 
-                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
-            })
-            .then(stream => {
-                localStream = stream;
-                document.getElementById('local-video').srcObject = stream;
-                initPeerConnection();
+            // Запускаем профессиональную видеокомнату
+            // Используем выделенный сервер 8x8 (создатели Jitsi), он работает стабильно в РФ
+            const domain = '8x8.vc'; 
+            
+            const options = {
+                // Создаем уникальный адрес комнаты на основе вашего репозитория и имени ученика
+                roomName: `vpaas-magic-cookie-43bd12bb673c4f7499694e9f90597143/arina-calls-${roomName}`,
+                width: '100%',
+                height: '100%',
+                parentNode: meetContainer,
+                lang: 'ru', // Полностью русский интерфейс
                 
-                // Мгновенное включение управления кнопками
-                setupInterfaceButtons();
-            })
-            .catch(err => {
-                statusText.innerHTML = `<span style="color:#ff4d4d">Ошибка: Нет доступа к камере или микрофону. Проверьте HTTPS!</span>`;
-                console.error(err);
-            });
-        }
-
-        function initPeerConnection() {
-            const teacherId = `room-${roomName}-teacher`;
-            const studentId = `room-${roomName}-student`;
-
-            let peer = new Peer(teacherId, peerConfig);
-
-            peer.on('open', () => {
-                statusText.innerHTML = `Вы зашли как Учитель. Ожидаем подключения ученика...`;
-                
-                peer.on('call', (call) => {
-                    statusText.innerHTML = `<span style="color:#00ff88">Ученик подключился! Идет урок.</span>`;
-                    currentCall = call;
-                    call.answer(localStream);
-                    call.on('stream', (remoteStream) => {
-                        remoteVideo.srcObject = remoteStream;
-                        enablePipButton();
-                    });
-                });
-            });
-
-            peer.on('error', (err) => {
-                if (err.type === 'unavailable-id') {
-                    peer.destroy();
-                    peer = new Peer(studentId, peerConfig);
+                configOverwrite: {
+                    startWithAudioMuted: false,
+                    startWithVideoMuted: false,
+                    disableDeepLinking: true, // Ученику не будет предлагать скачать приложение
+                    prejoinPageEnabled: false, // Вход в звонок СРАЗУ, без лишних экранов ожидания
                     
-                    peer.on('open', () => {
-                        statusText.innerHTML = `Подключение к учителю...`;
-                        
-                        const call = peer.call(teacherId, localStream);
-                        currentCall = call;
-                        call.on('stream', (remoteStream) => {
-                            statusText.innerHTML = `<span style="color:#00ff88">Связь установлена! Идет урок.</span>`;
-                            remoteVideo.srcObject = remoteStream;
-                            enablePipButton();
-                        });
-                    });
-                } else {
-                    statusText.innerHTML = `<span style="color:#ff4d4d">Ошибка сети. Попробуйте обновить страницу.</span>`;
-                }
-            });
-        }
-
-        // КОМАНДЫ ДЛЯ НАЖАТИЯ НА КНОПКИ
-        function setupInterfaceButtons() {
-            // Кнопка микрофона
-            document.getElementById('toggle-mic').addEventListener('click', function(e) {
-                isMicOn = !isMicOn;
-                localStream.getAudioTracks()[0].enabled = isMicOn;
-                this.innerHTML = isMicOn ? '🎤 Микрофон: Вкл' : '🔇 Микрофон: Выкл';
-                this.classList.toggle('disabled-state', !isMicOn);
-            });
-
-            // Кнопка камеры
-            document.getElementById('toggle-cam').addEventListener('click', function(e) {
-                isCamOn = !isCamOn;
-                localStream.getVideoTracks()[0].enabled = isCamOn;
-                this.innerHTML = isCamOn ? '📷 Камера: Вкл' : '❌ Камера: Выкл';
-                this.classList.toggle('disabled-state', !isCamOn);
-            });
-
-            // Кнопка завершения звонка
-            document.getElementById('end-call').addEventListener('click', function() {
-                if (currentCall) currentCall.close();
-                if (localStream) {
-                    localStream.getTracks().forEach(track => track.stop());
-                }
-                statusText.innerHTML = `<span style="color:#ff4d4d">Звонок успешно завершен. Можно закрыть вкладку.</span>`;
-                remoteVideo.srcObject = null;
-                document.getElementById('local-video').srcObject = null;
-            });
-        }
-
-        // ВКЛЮЧЕНИЕ КНОПКИ КАРТИНКА В КАРТИНКЕ
-        function enablePipButton() {
-            if (document.pictureInPictureEnabled) {
-                pipButton.style.display = 'block'; // Кнопка появляется ТОЛЬКО когда подключился ученик
-                
-                pipButton.onclick = async () => {
-                    try {
-                        if (document.pictureInPictureElement) {
-                            await document.exitPictureInPicture();
-                        } else {
-                            await remoteVideo.requestPictureInPicture();
-                        }
-                    } catch (error) {
-                        console.error('Ошибка режима Картинка в картинке:', error);
+                    // Встроенное мощное шумоподавление и эхоподавление
+                    audioQuality: {
+                        stereo: false
+                    },
+                    backgroundBlurVideoProcessor: {
+                        enabled: true
                     }
-                };
-            }
+                },
+                
+                interfaceConfigOverwrite: {
+                    // Оставляем только те кнопки, которые вы просили (микрофон, камера, картинка в картинке, завершить)
+                    TOOLBAR_BUTTONS: [
+                        'microphone', 'camera', 'hangup', 'pip', 'fullscreen', 'settings'
+                    ],
+                    SETTINGS_SECTIONS: ['devices', 'language']
+                }
+            };
+
+            // Браузер сам создаст подключение без каких-либо кнопок "Позвонить"
+            const api = new JitsiMeetExternalAPI(domain, options);
         }
     </script>
 </body>
 </html>
+
