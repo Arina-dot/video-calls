@@ -4,89 +4,55 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Мой Класс Видеосвязи</title>
-    <!-- Подключаем официальную библиотеку видеокомнат, которая заменит нестабильный PeerJS -->
-    <script src="https://8x8.vc"></script>
+    <!-- Подключаем официальный быстрый скрипт Jitsi -->
+    <script src="https://meet.jit.si/external_api.js"></script>
     <style>
         body {
             margin: 0;
             padding: 0;
-            font-family: Arial, sans-serif;
             background-color: #141419;
-            color: #fff;
+            height: 100vh;
             display: flex;
             flex-direction: column;
-            height: 100vh;
-            box-sizing: border-box;
             overflow: hidden;
         }
         #meet-container {
             flex: 1;
             width: 100%;
             height: 100%;
-            background-color: #000;
-        }
-        .error-message {
-            color: #ff4d4d;
-            font-weight: bold;
-            text-align: center;
-            max-width: 500px;
-            margin-top: 50px;
-            align-self: center;
         }
     </style>
 </head>
 <body>
 
-    <!-- В этом блоке автоматически откроется видеосвязь со всеми кнопками -->
+    <!-- В этом блоке мгновенно откроется готовый видеочат -->
     <div id="meet-container"></div>
 
-    <div id="error-screen" class="error-message" style="display: none;"></div>
     <script>
-        // Считываем имя комнаты из ссылки (например, ?room=ivan)
         const urlParams = new URLSearchParams(window.location.search);
         const roomName = urlParams.get('room');
 
-        const errorScreen = document.getElementById('error-screen');
-        const meetContainer = document.getElementById('meet-container');
-
         if (!roomName) {
-            meetContainer.style.display = 'none';
-            errorScreen.innerHTML = `
-                <h2>Комната не указана</h2>
-                <p>Пожалуйста, добавьте имя комнаты в конец ссылки.</p>
-                <p>Пример: в конце адреса вашего сайта допишите <b>?room=ivan</b></p>
-            `;
-            errorScreen.style.display = 'block';
+            document.body.innerHTML = '<h2 style="color:white; text-align:center; margin-top:50px;">Пожалуйста, укажите комнату в ссылке. Например: ?room=ivan</h2>';
         } else {
-            // Запускаем профессиональную видеокомнату
-            // Используем выделенный сервер 8x8 (создатели Jitsi), он работает стабильно в РФ
-            const domain = '8x8.vc'; 
-            
+            // Запускаем видеосвязь на стабильном основном сервере
+            const domain = 'meet.jit.si';
             const options = {
-                // Создаем уникальный адрес комнаты на основе вашего репозитория и имени ученика
-                roomName: `vpaas-magic-cookie-43bd12bb673c4f7499694e9f90597143/arina-calls-${roomName}`,
+                roomName: `arina-private-room-id-${roomName}`,
                 width: '100%',
                 height: '100%',
-                parentNode: meetContainer,
+                parentNode: document.querySelector('#meet-container'),
                 lang: 'ru', // Полностью русский интерфейс
                 
                 configOverwrite: {
                     startWithAudioMuted: false,
                     startWithVideoMuted: false,
-                    disableDeepLinking: true, // Ученику не будет предлагать скачать приложение
-                    prejoinPageEnabled: false, // Вход в звонок СРАЗУ, без лишних экранов ожидания
-                    
-                    // Встроенное мощное шумоподавление и эхоподавление
-                    audioQuality: {
-                        stereo: false
-                    },
-                    backgroundBlurVideoProcessor: {
-                        enabled: true
-                    }
+                    disableDeepLinking: true, // Не просит скачивать приложения
+                    prejoinPageEnabled: false // Вход в звонок сразу без экранов ожидания
                 },
                 
                 interfaceConfigOverwrite: {
-                    // Оставляем только те кнопки, которые вы просили (микрофон, камера, картинка в картинке, завершить)
+                    // Оставляем только нужные вам функции
                     TOOLBAR_BUTTONS: [
                         'microphone', 'camera', 'hangup', 'pip', 'fullscreen', 'settings'
                     ],
@@ -94,10 +60,9 @@
                 }
             };
 
-            // Браузер сам создаст подключение без каких-либо кнопок "Позвонить"
+            // Создаем видеочат
             const api = new JitsiMeetExternalAPI(domain, options);
         }
     </script>
 </body>
 </html>
-
