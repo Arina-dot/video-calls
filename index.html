@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Прямая Видеосвязь по Ссылке</title>
+    <!-- Подключаем библиотеку PeerJS -->
+    <script src="https://unpkg.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #141419;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        .status-panel {
+            margin-bottom: 20px;
+            padding: 15px 25px;
+            background: #202028;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 1.1rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        .video-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            width: 100%;
+            max-width: 1100px;
+            flex: 1;
+        }
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            flex: 1;
+        }
+        #local-video {
+            transform: scaleX(-1); /* Зеркально для себя */
+        }
+        .video-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            z-index: 10;
+        }
+        /* Кнопка "Картинка в картинке" */
+        .pip-btn {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            background-color: rgba(0, 123, 255, 0.85);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            font-size: 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            transition: background 0.2s;
+            z-index: 10;
+        }
+        .pip-btn:hover {
+            background-color: #0056b3;
+        }
+        .error-message {
+            color: #ff4d4d;
+            font-weight: bold;
+            text-align: center;
+            max-width: 500px;
+            margin-top: 50px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="main-interface" style="display: none; width: 100%; height: 100%; flex-direction: column; align-items: center;">
+        <div class="status-panel" id="status-text">Подключение к комнате...</div>
+
+        <div class="video-grid">
+            <div class="video-container">
+                <div class="video-label">Вы</div>
+                <video id="local-video" autoplay muted playsinline></video>
+            </div>
+            <div class="video-container">
+                <div class="video-label">Ученик</div>
+                <video id="remote-video" autoplay playsinline></video>
+                <!-- Кнопка поверх видео ученика -->
+                <button id="pip-button" class="pip-btn" style="display: none;">📺 Поверх всех окон</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="error-screen" class="error-message" style="display: none;"></div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomName = urlParams.get('room');
+
+        const statusText = document.getElementById('status-text');
+        const errorScreen = document.getElementById('error-screen');
+        const mainInterface = document.getElementById('main-interface');
+        const pipButton = document.getElementById('pip-button');
+        const remoteVideo = document.getElementById('remote-video');
+        
+        let localStream;
+
+        // НАСТРОЙКА БЕЗ GOOGLE: используем стабильные серверы Mozilla
+        const peerConfig = {
+            config: {
+                iceServers: [
+                    { urls: 'stun:://mozilla.com' }
+                ]
+            }
+        };
+
+        if (!roomName) {
+            errorScreen.innerHTML = `
+                <h2>Комната не указана</h2>
+                <p>Пожалуйста, добавьте имя комнаты в конец ссылки.</p>
+                <p>Пример: <b>${window.location.href}?room=ivan</b></p>
+            `;
+            errorScreen.style.display = 'block';
+        } else {
+            mainInterface.style.display = 'flex';
+            startCallSystem();
+        }
+
+        function startCallSystem() {
+            // Запрашиваем камеру и микрофон с максимальными настройками очистки звука
+            navigator.mediaDevices.getUserMedia({ 
+                video: true, 
+                audio: {
+                    echoCancellation: true,      // Жесткое подавление эха
+                    noiseSuppression: true,      // Максимальное подавление шумов
+                    autoGainControl: true        // Автоматическое выравнивание голоса
+                } 
+            })
+            .then(stream => {
+                localStream = stream;
+                document.getElementById('local-video').srcObject = stream;
+                initPeerConnection();
+            })
+            .catch(err => {
+                statusText.innerHTML = `<span style="color:#ff4d4d">Ошибка: Нет доступа к камере или микрофону. Проверьте HTTPS!</span>`;
+                console.error(err);
+            });
+        }
+
+        function initPeerConnection() {
+            const teacherId = `room-${roomName}-teacher`;
+            const studentId = `room-${roomName}-student`;
+
+            // Создаем подключение для роли Учителя через сервер Mozilla
+            let peer = new Peer(teacherId, peerConfig);
+
+            peer.on('open', () => {
+                statusText.innerHTML = `Вы зашли как Учитель. Ожидаем подключения ученика...`;
+                
+                peer.on('call', (call) => {
+                    statusText.innerHTML = `<span style="color:#00ff88">Ученик подключился! Идет урок.</span>`;
+                    call.answer(localStream);
+                    call.on('stream', (remoteStream) => {
+                        remoteVideo.srcObject = remoteStream;
+                        enablePipButton();
+                    });
+                });
+            });
+
+            peer.on('error', (err) => {
+                if (err.type === 'unavailable-id') {
+                    peer.destroy();
+                    
+                    // Создаем подключение для роли Ученика через сервер Mozilla
+                    peer = new Peer(studentId, peerConfig);
+                    
+                    peer.on('open', () => {
+                        statusText.innerHTML = `Подключение к учителю...`;
+                        
+                        const call = peer.call(teacherId, localStream);
+                        call.on('stream', (remoteStream) => {
+                            statusText.innerHTML = `<span style="color:#00ff88">Связь установлена! Идет урок.</span>`;
+                            remoteVideo.srcObject = remoteStream;
+                            enablePipButton();
+                        });
+                    });
+                } else {
+                    statusText.innerHTML = `<span style="color:#ff4d4d">Ошибка сети. Попробуйте обновить страницу.</span>`;
+                }
+            });
+        }
+
+        function enablePipButton() {
+            if (document.pictureInPictureEnabled) {
+                pipButton.style.display = 'block';
+                
+                pipButton.onclick = async () => {
+                    try {
+                        if (document.pictureInPictureElement) {
+                            await document.exitPictureInPicture();
+                        } else {
+                            await remoteVideo.requestPictureInPicture();
+                        }
+                    } catch (error) {
+                        console.error('Ошибка "Картинка в картинке":', error);
+                    }
+                };
+            }
+        }
+    </script>
+</body>
+</html>
