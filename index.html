@@ -67,6 +67,7 @@
             font-size: 0.9rem;
             z-index: 10;
         }
+        /* Панель управления звонком */
         .control-panel {
             position: fixed;
             bottom: 15px;
@@ -95,8 +96,8 @@
         .btn:hover {
             background: #4a4a5a;
         }
-        .btn.active {
-            background: #e02424;
+        .btn.disabled-state {
+            background: #e02424 !important; /* Красный цвет для выключенного режима */
         }
         .btn-end {
             background: #e02424;
@@ -178,7 +179,9 @@
                 localStream = stream;
                 document.getElementById('local-video').srcObject = stream;
                 initPeerConnection();
-                setupControls();
+                
+                // Мгновенное включение управления кнопками
+                setupInterfaceButtons();
             })
             .catch(err => {
                 statusText.innerHTML = `<span style="color:#ff4d4d">Ошибка: Нет доступа к камере или микрофону. Проверьте HTTPS!</span>`;
@@ -228,35 +231,40 @@
             });
         }
 
-        function setupControls() {
-            document.getElementById('toggle-mic').onclick = (e) => {
+        // КОМАНДЫ ДЛЯ НАЖАТИЯ НА КНОПКИ
+        function setupInterfaceButtons() {
+            // Кнопка микрофона
+            document.getElementById('toggle-mic').addEventListener('click', function(e) {
                 isMicOn = !isMicOn;
-                localStream.getAudioTracks().enabled = isMicOn;
-                e.target.innerHTML = isMicOn ? '🎤 Микрофон: Вкл' : '🔇 Микрофон: Выкл';
-                e.target.classList.toggle('active', !isMicOn);
-            };
+                localStream.getAudioTracks()[0].enabled = isMicOn;
+                this.innerHTML = isMicOn ? '🎤 Микрофон: Вкл' : '🔇 Микрофон: Выкл';
+                this.classList.toggle('disabled-state', !isMicOn);
+            });
 
-            document.getElementById('toggle-cam').onclick = (e) => {
+            // Кнопка камеры
+            document.getElementById('toggle-cam').addEventListener('click', function(e) {
                 isCamOn = !isCamOn;
-                localStream.getVideoTracks().enabled = isCamOn;
-                e.target.innerHTML = isCamOn ? '📷 Камера: Вкл' : '❌ Камера: Выкл';
-                e.target.classList.toggle('active', !isCamOn);
-            };
+                localStream.getVideoTracks()[0].enabled = isCamOn;
+                this.innerHTML = isCamOn ? '📷 Камера: Вкл' : '❌ Камера: Выкл';
+                this.classList.toggle('disabled-state', !isCamOn);
+            });
 
-            document.getElementById('end-call').onclick = () => {
+            // Кнопка завершения звонка
+            document.getElementById('end-call').addEventListener('click', function() {
                 if (currentCall) currentCall.close();
                 if (localStream) {
                     localStream.getTracks().forEach(track => track.stop());
                 }
-                statusText.innerHTML = `<span style="color:#ff4d4d">Звонок завершен. Можно закрыть вкладку.</span>`;
+                statusText.innerHTML = `<span style="color:#ff4d4d">Звонок успешно завершен. Можно закрыть вкладку.</span>`;
                 remoteVideo.srcObject = null;
                 document.getElementById('local-video').srcObject = null;
-            };
+            });
         }
 
+        // ВКЛЮЧЕНИЕ КНОПКИ КАРТИНКА В КАРТИНКЕ
         function enablePipButton() {
             if (document.pictureInPictureEnabled) {
-                pipButton.style.display = 'block';
+                pipButton.style.display = 'block'; // Кнопка появляется ТОЛЬКО когда подключился ученик
                 
                 pipButton.onclick = async () => {
                     try {
@@ -266,7 +274,7 @@
                             await remoteVideo.requestPictureInPicture();
                         }
                     } catch (error) {
-                        console.error('Ошибка "Картинка в картинке":', error);
+                        console.error('Ошибка режима Картинка в картинке:', error);
                     }
                 };
             }
@@ -274,4 +282,3 @@
     </script>
 </body>
 </html>
-
